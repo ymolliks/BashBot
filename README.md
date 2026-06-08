@@ -91,7 +91,10 @@ Command | Alias | Usage | Description
 .close | .c | .close | Closes current terminal session
 .freeze | .f | .freeze | Freezes current terminal session
 .here | .h | .here | Moves selected terminal below the user message
-.select | .s | .select [name] | Sets terminal as selected
+.select | .s | .select <id_or_name> | Sets terminal as selected
+.sessions | .ss, .ps | .sessions | Lists open terminal sessions
+.kill | - | .kill | Force terminates current terminal session
+.restart | - | .restart | Restarts current terminal session
 .controls |-|.controls add/remove [emoji] [content..] | Manages terminal controls
 .repeat | .r | .repeat <n> <string..> | Repeats string n times and sends to the current terminal session
 .rename | - | .rename <new_name> | Changes session name

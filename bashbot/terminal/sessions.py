@@ -2,7 +2,7 @@ from typing import List, TYPE_CHECKING
 
 from bashbot.core.factory import SingletonDecorator
 from bashbot.core.settings import settings
-from bashbot.core.utils import parse_template, block_escape
+from bashbot.core.utils import DISCORD_MESSAGE_LIMIT, get_logger, parse_template, block_escape
 
 if TYPE_CHECKING:
     from discord import Message, TextChannel
@@ -11,9 +11,12 @@ if TYPE_CHECKING:
 
 
 class Sessions:
+    logger = get_logger('Sessions')
+
     def __init__(self):
         self.sessions = {}
         self.selected = {}
+        self.next_id = 1
 
     @staticmethod
     def _message_key(message):
@@ -23,7 +26,13 @@ class Sessions:
     def _channel_key(channel):
         return getattr(channel, 'id', id(channel))
 
+    def _assign_id(self, terminal: 'Terminal'):
+        if getattr(terminal, 'session_id', None) is None:
+            terminal.session_id = self.next_id
+            self.next_id += 1
+
     def add(self, message: 'Message', terminal: 'Terminal'):
+        self._assign_id(terminal)
         self.sessions[self._message_key(message)] = (message, terminal)
         self.select(message.channel, terminal)
 
@@ -39,16 +48,31 @@ class Sessions:
             return binding[1]
 
     def search(self, phrase: str) -> List['Terminal']:
+        phrase = str(phrase)
         return [
             terminal
             for _, terminal in self.sessions.values()
-            if terminal.name.startswith(phrase)
+            if terminal.name.startswith(phrase) or str(getattr(terminal, 'session_id', '')).startswith(phrase)
         ]
 
     def by_name(self, name: str) -> 'Terminal':
         for _, terminal in self.sessions.values():
             if terminal.name == name:
                 return terminal
+
+    def by_identifier(self, identifier: str) -> 'Terminal':
+        identifier = str(identifier).lstrip('#')
+        if identifier.isdigit():
+            session_id = int(identifier)
+            for _, terminal in self.sessions.values():
+                if getattr(terminal, 'session_id', None) == session_id:
+                    return terminal
+
+        return self.by_name(identifier)
+
+    def all(self) -> List['Terminal']:
+        terminals = [terminal for _, terminal in self.sessions.values()]
+        return sorted(terminals, key=lambda terminal: getattr(terminal, 'session_id', 0))
 
     def remove(self, terminal: 'Terminal'):
         for message_id, (_, stored_terminal) in self.sessions.copy().items():
@@ -71,19 +95,58 @@ class Sessions:
 
         self.sessions[self._message_key(message)] = (message, terminal)
 
+    @staticmethod
+    def render_message(terminal: 'Terminal', content: str, limit=DISCORD_MESSAGE_LIMIT):
+        template = settings().get('terminal.template', '`| TTY #{id}:{name} | {state} |`\n```{content}```')
+        escaped_content = block_escape(content)
+
+        def render(content_value):
+            return parse_template(
+                template,
+                id=getattr(terminal, 'session_id', '?'),
+                name=terminal.name,
+                state=terminal.state.name,
+                content=content_value
+            )
+
+        rendered = render(escaped_content)
+        if len(rendered) <= limit:
+            return rendered
+
+        static_rendered = render('')
+        available = limit - len(static_rendered)
+        if available <= 0:
+            return static_rendered[:limit]
+
+        marker = '... output truncated ...\n'
+        if len(marker) >= available:
+            clipped_content = marker[:available]
+        else:
+            clipped_content = marker + escaped_content[-(available - len(marker)):]
+
+        rendered = render(clipped_content)
+        while len(rendered) > limit and len(clipped_content) > len(marker):
+            overage = len(rendered) - limit
+            clipped_content = marker + clipped_content[len(marker) + overage:]
+            rendered = render(clipped_content)
+
+        return rendered[:limit]
+
     async def update_message(self, terminal: 'Terminal', content: str):
         message = self.find_message(terminal)
         if not message:
             return
 
-        content = parse_template(
-            settings().get('terminal.template'),
-            name=terminal.name,
-            state=terminal.state.name,
-            content=block_escape(content)
-        )
+        content = self.render_message(terminal, content)
 
-        await message.edit(content=content, embed=None)
+        try:
+            await message.edit(content=content, embed=None)
+        except Exception:
+            self.logger.exception('Failed to update terminal message')
+
+    async def finish_terminal(self, terminal: 'Terminal', content: str):
+        await self.update_message(terminal, content)
+        self.remove(terminal)
 
 
 sessions = SingletonDecorator(Sessions)

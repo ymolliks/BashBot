@@ -95,7 +95,7 @@ class Settings:
         self.add_default('discord.message_content_intent', True)
 
         # [terminal]
-        self.add_default('terminal.template', '`| TTY #{name} | {state} |`\n```{content}```')
+        self.add_default('terminal.template', '`| TTY #{id}:{name} | {state} |`\n```{content}```')
         self.add_default('terminal.shell_path', '/bin/bash')
         self.add_default('terminal.su_path', '/bin/su')
         self.add_default('terminal.startup_macro', '')

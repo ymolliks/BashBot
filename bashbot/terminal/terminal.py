@@ -1,7 +1,11 @@
 import asyncio
 import os
+import signal
 import sys
 import threading
+import time
+from inspect import isawaitable
+
 import pyte
 from enum import Enum
 
@@ -9,6 +13,8 @@ from bashbot.core.settings import settings
 from bashbot.core.utils import execute_async
 from bashbot.terminal.control import TerminalControl
 from bashbot.terminal.shortcuts import replace_shortcuts
+
+TERMINATE_WAIT_SECONDS = 0.5
 
 
 class TerminalState(Enum):
@@ -26,13 +32,15 @@ class Terminal:
     def __init__(self, name: str,
                  sh_path: str, su_path: str = None,
                  login: str = None, password: str = None,
-                 on_change=None):
+                 on_change=None, on_exit=None):
+        self.session_id = None
         self.name = name
         self.sh_path = sh_path
         self.su_path = su_path
         self.login = login
         self.password = password
         self.on_change = on_change
+        self.on_exit = on_exit
 
         self.controls = {}
         self.interactive = settings().get('terminal.interactive_by_default')
@@ -48,10 +56,17 @@ class Terminal:
 
         self.refresh_timer = None
         self.event_loop = None
+        self._closing = False
+        self._exited = False
+        self._pty_generation = 0
 
     def open(self, loop=None):
         self.__validate_startup()
         self.event_loop = loop or asyncio.get_running_loop()
+        self.__reset_screen()
+        self._closing = False
+        self._exited = False
+        self._pty_generation += 1
         self.pid, self.fd = os.forkpty()
 
         if self.pid == 0:
@@ -64,8 +79,12 @@ class Terminal:
             sys.exit(0)
         else:
             self.state = TerminalState.OPEN
-            pty_watcher = threading.Thread(target=self.__monitor_pty, daemon=True)
+            pty_watcher = threading.Thread(target=self.__monitor_pty, args=(self.fd, self._pty_generation), daemon=True)
             pty_watcher.start()
+
+    def restart(self, loop=None):
+        self.close(notify=False)
+        self.open(loop=loop)
 
     def __validate_startup(self):
         if not hasattr(os, 'forkpty'):
@@ -80,19 +99,114 @@ class Terminal:
         if self.login and not os.path.exists(self.su_path):
             raise TerminalStartupError(f'su path does not exist: {self.su_path}')
 
-    def close(self):
+    def close(self, force=False, notify=True):
+        self._closing = True
         self.state = TerminalState.CLOSED
-        self.refresh()
+
+        self.__terminate_child(force=force)
+        self.__close_fd()
+
+        if self.refresh_timer:
+            self.refresh_timer.cancel()
+        if notify:
+            self.__notify_change()
+
+    def kill(self):
+        self.close(force=True)
+
+    def __reset_screen(self):
+        self.screen = pyte.Screen(80, 24)
+        self.stream = pyte.ByteStream(self.screen)
+        self.content = None
+
+    def __close_fd(self):
+        if self.fd is None:
+            return
+
         try:
             os.close(self.fd)
         except OSError:
             pass
+        finally:
+            self.fd = None
 
-        if self.pid:
+    def __signal_child(self, sig):
+        if not self.pid:
+            return
+
+        try:
+            if hasattr(os, 'killpg'):
+                os.killpg(self.pid, sig)
+            else:
+                os.kill(self.pid, sig)
+        except OSError:
             try:
-                os.waitpid(self.pid, os.WNOHANG)
-            except ChildProcessError:
+                os.kill(self.pid, sig)
+            except OSError:
                 pass
+
+    def __terminate_child(self, force=False):
+        if not self.pid:
+            return
+
+        kill_signal = getattr(signal, 'SIGKILL', signal.SIGTERM)
+        if force:
+            self.__signal_child(kill_signal)
+            self.__wait_for_child(timeout=TERMINATE_WAIT_SECONDS)
+            return
+
+        close_signals = [
+            getattr(signal, 'SIGHUP', signal.SIGTERM),
+            signal.SIGTERM,
+            kill_signal,
+        ]
+        for sig in close_signals:
+            self.__signal_child(sig)
+            if self.__wait_for_child(timeout=TERMINATE_WAIT_SECONDS):
+                return
+
+    def __wait_for_child(self, timeout=0):
+        if not self.pid or not hasattr(os, 'waitpid'):
+            return False
+
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                waited_pid, _ = os.waitpid(self.pid, os.WNOHANG)
+            except ChildProcessError:
+                self.pid = None
+                return True
+            except OSError:
+                return False
+
+            if waited_pid:
+                self.pid = None
+                return True
+
+            if timeout <= 0 or time.monotonic() >= deadline:
+                return False
+
+            time.sleep(0.05)
+
+    def __finish(self, state, generation=None):
+        if generation is not None and generation != self._pty_generation:
+            return
+
+        if self._exited:
+            return
+
+        self._exited = True
+        if self.state != TerminalState.CLOSED:
+            self.state = state
+
+        self.__close_fd()
+        self.__wait_for_child(timeout=1)
+
+        if self.refresh_timer:
+            self.refresh_timer.cancel()
+        self.__notify_change()
+        self.__notify_exit()
+
 
     def refresh(self):
         if self.refresh_timer and self.refresh_timer.is_alive():
@@ -106,6 +220,14 @@ class Terminal:
         if self.event_loop and self.on_change:
             execute_async(self.event_loop, self.on_change(self, self.content))
 
+    def __notify_exit(self):
+        if not self.event_loop or not self.on_exit or self._closing:
+            return
+
+        result = self.on_exit(self, self.content)
+        if isawaitable(result):
+            execute_async(self.event_loop, result)
+
     def send_input(self, data: str):
         if self.state != TerminalState.OPEN:
             return
@@ -113,9 +235,12 @@ class Terminal:
         data = replace_shortcuts(data)
 
         try:
+            if self.fd is None:
+                raise OSError()
             os.write(self.fd, data.encode("utf-8"))
         except OSError:
-            self.state = TerminalState.BROKEN
+            if not self._closing:
+                self.__finish(TerminalState.BROKEN)
 
     def add_control(self, emoji, content):
         self.controls[emoji] = TerminalControl(emoji, content)
@@ -126,20 +251,32 @@ class Terminal:
     def search_control(self, phrase):
         return [label for label in self.controls.keys() if label.startswith(phrase)]
 
-    def __monitor_pty(self):
+    def __monitor_pty(self, fd, generation):
         try:
-            output = os.read(self.fd, 1024)
+            output = os.read(fd, 1024)
             if self.login:
                 self.send_input(self.password + '\n')
 
             while output:
+                if generation != self._pty_generation:
+                    return
+
                 self.stream.feed(output)
                 self.content = '\n'.join(self.screen.display)
 
                 if self.on_change and self.state == TerminalState.OPEN:
                     self.refresh()
 
-                output = os.read(self.fd, 1024)
+                output = os.read(fd, 1024)
+            if generation != self._pty_generation:
+                return
+
+            if not self._closing:
+                self.__finish(TerminalState.CLOSED, generation=generation)
         except OSError:
-            self.state = TerminalState.BROKEN
-            return
+            if generation != self._pty_generation:
+                return
+
+            if not self._closing:
+                state = TerminalState.CLOSED if self.__wait_for_child() else TerminalState.BROKEN
+                self.__finish(state, generation=generation)

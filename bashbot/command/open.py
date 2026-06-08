@@ -21,10 +21,11 @@ class OpenCommand(commands.Cog):
             raise ArgumentFormatException('Session name length exceeds 20 characters limit')
 
         if not name:
-            name = str(len(sessions().sessions))
+            name = str(sessions().next_id)
 
         content = parse_template(
             settings().get('terminal.template'),
+            id=sessions().next_id,
             name=name,
             state='OPENING',
             content='Waiting for tty..'
@@ -38,9 +39,22 @@ class OpenCommand(commands.Cog):
             su_path = settings().get('terminal.su_path')
             login = settings().get('terminal.user.username')
             password = settings().get('terminal.user.password')
-            terminal = Terminal(name, sh_path=sh_path, on_change=sessions().update_message, su_path=su_path, login=login, password=password)
+            terminal = Terminal(
+                name,
+                sh_path=sh_path,
+                on_change=sessions().update_message,
+                on_exit=sessions().finish_terminal,
+                su_path=su_path,
+                login=login,
+                password=password
+            )
         else:
-            terminal = Terminal(name, sh_path=sh_path, on_change=sessions().update_message)
+            terminal = Terminal(
+                name,
+                sh_path=sh_path,
+                on_change=sessions().update_message,
+                on_exit=sessions().finish_terminal
+            )
 
         sessions().add(message, terminal)
         try:
@@ -50,6 +64,7 @@ class OpenCommand(commands.Cog):
             sessions().remove(terminal)
             content = parse_template(
                 settings().get('terminal.template'),
+                id=getattr(terminal, 'session_id', '?'),
                 name=name,
                 state='BROKEN',
                 content=str(error)

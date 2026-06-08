@@ -10,7 +10,7 @@ users_whitelist = []
 message_content_intent = true
 
 [terminal]
-template = "`| TTY #{name} | {state} |`\n```{content}```"
+template = "`| TTY #{id}:{name} | {state} |`\n```{content}```"
 shell_path = "/bin/bash"
 su_path = "/bin/su"
 startup_macro = ""

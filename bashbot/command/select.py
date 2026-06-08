@@ -11,21 +11,22 @@ class SelectCommand(commands.Cog):
         name='select',
         aliases=['.select', '.s'],
         description='Sets terminal as selected',
-        usage='[name]'
+        usage='<id_or_name>'
     )
     async def select(self, ctx, name):
-        terminal = sessions().by_name(name)
+        terminal = sessions().by_identifier(name)
         if not terminal:
             raise TerminalNotFoundException()
 
         sessions().select(ctx.channel, terminal)
-        embed = Embed(description=f"Selected terminal #{name}", color=EMBED_COLOR)
+        session_id = getattr(terminal, 'session_id', '?')
+        embed = Embed(description=f"Selected terminal #{session_id} ({terminal.name})", color=EMBED_COLOR)
         await ctx.send(embed=embed)
 
     @select.autocomplete('name')
     async def select_autocomplete(self, interaction: Interaction, current: str):
         results = sessions().search(current)[:25]
         return [
-            app_commands.Choice(name=option.name, value=option.name)
+            app_commands.Choice(name=f'#{getattr(option, "session_id", "?")} {option.name}', value=str(getattr(option, 'session_id', option.name)))
             for option in results
         ]

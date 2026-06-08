@@ -20,6 +20,7 @@ from bashbot.command.open import OpenCommand
 from bashbot.command.rename import RenameCommand
 from bashbot.command.repeat import RepeatCommand
 from bashbot.command.select import SelectCommand
+from bashbot.command.session import KillCommand, RestartCommand, SessionsCommand
 from bashbot.command.submit import SubmitCommand
 from bashbot.command.upload import UploadCommand
 from bashbot.command.help import HelpCommand
@@ -60,6 +61,9 @@ class BashBot(Bot):
         await self.add_cog(RepeatCommand())
         await self.add_cog(MacroCommand())
         await self.add_cog(SelectCommand())
+        await self.add_cog(SessionsCommand())
+        await self.add_cog(KillCommand())
+        await self.add_cog(RestartCommand())
         await self.add_cog(InteractiveCommand())
         await self.add_cog(EnterCommand())
         await self.add_cog(UpCommand())

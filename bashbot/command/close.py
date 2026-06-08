@@ -21,10 +21,12 @@ class CloseCommand(commands.Cog):
             raise SessionDontExistException()
 
         terminal.close()
+        await sessions().update_message(terminal, terminal.content)
 
         if settings().get('terminal.delete_on_close'):
             message = sessions().find_message(terminal)
-            await message.delete()
+            if message:
+                await message.delete()
 
         sessions().remove(terminal)
 
