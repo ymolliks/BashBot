@@ -20,7 +20,6 @@ class OpenCommand(commands.Cog):
         if name and len(name) > 20:
             raise ArgumentFormatException('Session name length exceeds 20 characters limit')
 
-        # Auto-generated name
         if not name:
             name = str(len(sessions().sessions))
 
@@ -32,7 +31,6 @@ class OpenCommand(commands.Cog):
         )
         message: Message = await ctx.send(content)
 
-        # Prepare terminal
         sh_path = settings().get('terminal.shell_path')
 
         login_as_other_user = settings().get('terminal.user.login_as_other_user')
@@ -40,14 +38,14 @@ class OpenCommand(commands.Cog):
             su_path = settings().get('terminal.su_path')
             login = settings().get('terminal.user.username')
             password = settings().get('terminal.user.password')
-
             terminal = Terminal(name, sh_path=sh_path, on_change=sessions().update_message, su_path=su_path, login=login, password=password)
         else:
             terminal = Terminal(name, sh_path=sh_path, on_change=sessions().update_message)
 
         sessions().add(message, terminal)
         try:
-            terminal.open()
+            import asyncio
+            terminal.open(loop=asyncio.get_running_loop())
         except TerminalStartupError as error:
             sessions().remove(terminal)
             content = parse_template(
@@ -60,7 +58,6 @@ class OpenCommand(commands.Cog):
             await ctx.send(f'`{error}`')
             return
 
-        # Run macro on terminal startup
         startup_macro = settings().get('terminal.startup_macro')
         if startup_macro:
             await execute_macro(ctx, startup_macro)

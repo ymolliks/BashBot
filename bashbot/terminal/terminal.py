@@ -22,11 +22,6 @@ class TerminalStartupError(Exception):
     pass
 
 
-INIT_ENVS = {
-    'TERM': 'linux'
-}
-
-
 class Terminal:
     def __init__(self, name: str,
                  sh_path: str, su_path: str = None,
@@ -54,21 +49,21 @@ class Terminal:
         self.refresh_timer = None
         self.event_loop = None
 
-    def open(self):
+    def open(self, loop=None):
         self.__validate_startup()
+        self.event_loop = loop or asyncio.get_running_loop()
         self.pid, self.fd = os.forkpty()
-        self.event_loop = asyncio.get_running_loop()
 
         if self.pid == 0:
+            env = os.environ.copy()
+            env['TERM'] = 'linux'
             if self.login:
-                os.execve(self.su_path, [self.su_path, "-", self.login, "-s", self.sh_path], INIT_ENVS)
+                os.execve(self.su_path, [self.su_path, "-", self.login, "-s", self.sh_path], env)
             else:
-                os.execve(self.sh_path, [self.sh_path, ], INIT_ENVS)
-
+                os.execve(self.sh_path, [self.sh_path], env)
             sys.exit(0)
         else:
             self.state = TerminalState.OPEN
-
             pty_watcher = threading.Thread(target=self.__monitor_pty, daemon=True)
             pty_watcher.start()
 

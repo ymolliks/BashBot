@@ -6,18 +6,22 @@ from discord.ui import View, Button
 from discord.utils import oauth_url
 
 from bashbot.command.about import AboutCommand
+from bashbot.command.clear import ClearCommand
+from bashbot.command.ctrl import CtrlCommand
 from bashbot.command.exec import ExecCommand
 from bashbot.command.close import CloseCommand
 from bashbot.command.controls import ControlsCommand
 from bashbot.command.freeze import FreezeCommand
 from bashbot.command.here import HereCommand
 from bashbot.command.interactive import InteractiveCommand
+from bashbot.command.key import EnterCommand, UpCommand, DownCommand, LeftCommand, RightCommand
 from bashbot.command.macro import MacroCommand
 from bashbot.command.open import OpenCommand
 from bashbot.command.rename import RenameCommand
 from bashbot.command.repeat import RepeatCommand
 from bashbot.command.select import SelectCommand
 from bashbot.command.submit import SubmitCommand
+from bashbot.command.upload import UploadCommand
 from bashbot.command.help import HelpCommand
 from bashbot.command.whitelist import WhitelistCommand
 from bashbot.core.exceptions import SessionDontExistException, ArgumentFormatException, TerminalNotFoundException, \
@@ -50,10 +54,18 @@ class BashBot(Bot):
         await self.add_cog(RenameCommand())
         await self.add_cog(ControlsCommand())
         await self.add_cog(AboutCommand())
+        await self.add_cog(ClearCommand())
+        await self.add_cog(CtrlCommand())
+        await self.add_cog(UploadCommand())
         await self.add_cog(RepeatCommand())
         await self.add_cog(MacroCommand())
         await self.add_cog(SelectCommand())
         await self.add_cog(InteractiveCommand())
+        await self.add_cog(EnterCommand())
+        await self.add_cog(UpCommand())
+        await self.add_cog(DownCommand())
+        await self.add_cog(LeftCommand())
+        await self.add_cog(RightCommand())
         await self.add_cog(SubmitCommand())
         await self.add_cog(ExecCommand())
         await self.add_cog(WhitelistCommand())
