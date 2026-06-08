@@ -1,5 +1,6 @@
-from discord import Message, Status, Game, DMChannel, Embed, Interaction, InteractionType
+from discord import Message, Status, Game, DMChannel, Embed, Interaction, InteractionType, app_commands
 from discord.abc import PrivateChannel
+from discord.ext import commands
 from discord.ext.commands import Bot, Context
 from discord.ui import View, Button
 from discord.utils import oauth_url
@@ -33,7 +34,15 @@ class BashBot(Bot):
     logger = get_logger('BashBot')
     cmd_logger = get_logger('Command')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._command_tree_sync_checked = False
+        self.add_check(self.check_context_permissions, call_once=True)
+
     async def setup_hook(self):
+        self.tree.interaction_check = self.check_interaction_permissions
+        self.tree.on_error = self.on_app_command_error
+
         await self.add_cog(OpenCommand())
         await self.add_cog(CloseCommand())
         await self.add_cog(HereCommand())
@@ -53,64 +62,111 @@ class BashBot(Bot):
         await self.add_cog(HelpCommand())
 
     async def on_ready(self):
-        if state()['last_run_version'] != Updater.get_local_commit():
-            self.logger.info('Synchronizing command tree...')
-            await self.tree.sync()
-            self.logger.info('Command tree synchronized')
-
-        self.__check_for_updates()
+        await self.__sync_command_tree_once()
+        await self.__check_for_updates()
 
         self.logger.info(f'Logged in as {self.user.name} ({self.user.id})')
         self.logger.info(f'You can add bot to your server via {oauth_url(self.user.id)}')
 
+        first_prefix = settings().get('commands.prefixes', ['$'])[0]
         presence = parse_template(
             settings().get("discord.presence"),
-            prefix=self.command_prefix
+            prefix=first_prefix
         )
         await self.change_presence(
             status=Status.online,
             activity=Game(presence)
         )
 
-    def __check_for_updates(self):
-        if settings().get('other.check_for_updates'):
-            self.logger.info(f'Checking for updates...')
+    async def __sync_command_tree_once(self):
+        if self._command_tree_sync_checked:
+            return
 
-            releases = updater().check_for_updates()
+        self._command_tree_sync_checked = True
+        local_version = Updater.get_local_commit()
+        last_synced_version = state().get('last_command_sync_version')
+        if last_synced_version and last_synced_version == local_version:
+            return
+
+        try:
+            self.logger.info('Synchronizing command tree...')
+            await self.tree.sync()
+        except Exception:
+            self.logger.exception('Failed to synchronize command tree')
+            return
+
+        state()['last_command_sync_version'] = local_version
+        state()['last_run_version'] = local_version
+        state().save()
+        self.logger.info('Command tree synchronized')
+
+    async def __check_for_updates(self):
+        if settings().get('other.check_for_updates'):
+            self.logger.info('Checking for updates...')
+
+            releases = await updater().check_for_updates_async()
             if releases is None:
-                self.logger.info(f'Failed to fetch updates information')
+                self.logger.info('Failed to fetch updates information')
             elif releases:
                 self.logger.info(
-                    f'New updates available. Try running `git pull`. \n' +
+                    'New updates available. Try running `git pull`. \n' +
                     '\n'.join([f'- {x["name"]} ({x["html_url"]})' for x in releases])
                 )
             else:
-                self.logger.info(f'BashBot is up to date')
+                self.logger.info('BashBot is up to date')
 
-    async def check_permissions(self, message):
-        is_owner = await self.is_owner(message.author)
-        if not is_owner:
-            if settings().get('discord.enable_users_whitelist'):
-                users_whitelist = settings().get('discord.users_whitelist', [])
+    async def check_context_permissions(self, ctx: Context):
+        return await self.check_message_permissions(ctx.message)
 
-                if message.author.id not in users_whitelist:
-                    first_prefix = settings().get('commands.prefixes')[0]
-                    embed = Embed(
-                        title=f'Only whitelisted users can execute commands',
-                        description=f'{first_prefix}.whitelist add {message.author.mention}'
-                    )
+    async def check_message_permissions(self, message: Message):
+        async def send(embed):
+            await message.channel.send(embed=embed)
 
-                    await message.channel.send(embed=embed)
-                    return False
+        return await self.__check_permissions(
+            user=message.author,
+            channel=message.channel,
+            send=send
+        )
 
-            if isinstance(message.channel, DMChannel) and settings().get('discord.disable_dm'):
+    async def check_interaction_permissions(self, interaction: Interaction):
+        async def send(embed):
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        return await self.__check_permissions(
+            user=interaction.user,
+            channel=interaction.channel,
+            send=send
+        )
+
+    async def __check_permissions(self, user, channel, send):
+        is_owner = await self.is_owner(user)
+        if is_owner:
+            return True
+
+        if settings().get('discord.enable_users_whitelist'):
+            users_whitelist = settings().get('discord.users_whitelist', [])
+
+            if user.id not in users_whitelist:
+                first_prefix = settings().get('commands.prefixes')[0]
                 embed = Embed(
-                    title=f'Using bot on DM is disabled',
-                    description='discord.disable_dm = true'
+                    title='Only whitelisted users can execute commands',
+                    description=f'Ask the bot owner to run `/whitelist add` or `{first_prefix}.whitelist add {user.mention}`'
                 )
 
-                await message.channel.send(embed=embed)
+                await send(embed)
                 return False
+
+        if isinstance(channel, PrivateChannel) and settings().get('discord.disable_dm'):
+            embed = Embed(
+                title='Using bot on DM is disabled',
+                description='discord.disable_dm = true'
+            )
+
+            await send(embed)
+            return False
 
         return True
 
@@ -121,19 +177,16 @@ class BashBot(Bot):
         terminal = sessions().by_channel(message.channel)
 
         if self.is_invoke(message):
-            if not await self.check_permissions(message):
-                return
-
             await self.process_commands(message)
         elif terminal and terminal.state == TerminalState.OPEN:
             prefix = extract_prefix(message.content)
             if not terminal.interactive and not prefix:
                 return
 
-            if not await self.check_permissions(message):
+            if not await self.check_message_permissions(message):
                 return
 
-            # We don't remove prefix when in interactive mode
+            # We don't remove prefix when in interactive mode.
             content = message.content
             if not terminal.interactive:
                 content = remove_prefix(content)
@@ -143,9 +196,9 @@ class BashBot(Bot):
 
             terminal.send_input(content)
 
-            # Log message
-            guild_name = message.channel.guild.name
-            channel_name = message.channel.name
+            guild = getattr(message.channel, 'guild', None)
+            guild_name = getattr(guild, 'name', 'DM')
+            channel_name = getattr(message.channel, 'name', 'DM')
             author_name = message.author.name
             self.cmd_logger.info(f"[{guild_name}/#{channel_name}/{terminal.name}] {author_name} typed: {content}")
 
@@ -155,22 +208,26 @@ class BashBot(Bot):
                 await message.delete()
 
     async def on_interaction(self, interaction: Interaction):
-        if interaction.type != InteractionType.component:
+        if interaction.type != InteractionType.component or not interaction.message:
+            return
+
+        custom_id = interaction.data.get('custom_id', '')
+        if not custom_id.startswith('control_'):
             return
 
         terminal = sessions().by_message(interaction.message)
+        if terminal:
+            return
 
-        label = interaction.data['custom_id']
-        if label.startswith('control_') and not terminal:
+        if not interaction.response.is_done():
             await interaction.response.send_message(content='This terminal is unavailable', ephemeral=True)
-            view = View.from_message(interaction.message)
-            for component in view.children:
-                if isinstance(component, Button):
-                    component.disabled = True
 
-            await interaction.message.edit(view=view)
-            terminal.state = TerminalState.BROKEN
-            terminal.refresh()
+        view = View.from_message(interaction.message)
+        for component in view.children:
+            if isinstance(component, Button):
+                component.disabled = True
+
+        await interaction.message.edit(view=view)
 
     async def on_command(self, ctx: Context):
         if not isinstance(ctx.message.channel, DMChannel):
@@ -186,26 +243,39 @@ class BashBot(Bot):
         self.cmd_logger.info(f"[{guild_name}/#{channel_name}] {author_name} invoked command: {content}")
 
     async def on_command_error(self, ctx: Context, error):
-        message = None
-
-        if isinstance(error, ArgumentFormatException):
-            message = error.message
-
-        if isinstance(error, SessionDontExistException):
-            message = error.message
-
-        if isinstance(error, TerminalNotFoundException):
-            message = error.message
-
-        if isinstance(error, MacroNotFoundException):
-            message = error.message
+        message = self.__friendly_error_message(error)
 
         if message:
             await ctx.send(f'`{message}`')
+
+    async def on_app_command_error(self, interaction: Interaction, error: app_commands.AppCommandError):
+        message = self.__friendly_error_message(error)
+
+        if message:
+            if interaction.response.is_done():
+                await interaction.followup.send(content=f'`{message}`', ephemeral=True)
+            else:
+                await interaction.response.send_message(content=f'`{message}`', ephemeral=True)
+            return
+
+        self.logger.exception('Unhandled app command error', exc_info=error)
+
+    @staticmethod
+    def __friendly_error_message(error):
+        original = getattr(error, 'original', error)
+        handled_errors = (
+            ArgumentFormatException,
+            SessionDontExistException,
+            TerminalNotFoundException,
+            MacroNotFoundException,
+        )
+
+        if isinstance(original, handled_errors):
+            return original.message
 
     def is_invoke(self, message: Message):
         if isinstance(message.channel, PrivateChannel):
             return True
 
-        has_mention = self.user in message.mentions
+        has_mention = self.user in message.mentions if self.user else False
         return is_command(message.content) or has_mention

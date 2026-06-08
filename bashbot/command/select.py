@@ -18,13 +18,13 @@ class SelectCommand(commands.Cog):
         if not terminal:
             raise TerminalNotFoundException()
 
-        sessions().select(ctx.message.channel, terminal)
+        sessions().select(ctx.channel, terminal)
         embed = Embed(description=f"Selected terminal #{name}", color=EMBED_COLOR)
         await ctx.send(embed=embed)
 
     @select.autocomplete('name')
     async def select_autocomplete(self, interaction: Interaction, current: str):
-        results = sessions().search(current)
+        results = sessions().search(current)[:25]
         return [
             app_commands.Choice(name=option.name, value=option.name)
             for option in results

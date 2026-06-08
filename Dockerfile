@@ -1,14 +1,16 @@
-FROM python:3.8.7-slim-buster
+FROM python:3.12-slim
 
-RUN apt update && apt install -y git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -g 1000 bashbot
-RUN useradd -u 1000 -g bashbot -s /bin/sh -m bashbot
+RUN groupadd -g 1000 bashbot \
+    && useradd -u 1000 -g bashbot -s /bin/sh -m bashbot
 
-RUN git clone https://github.com/Adikso/BashBot.git
-WORKDIR BashBot
-RUN pip install --no-cache-dir -r requirements.txt
-RUN chown -R bashbot:bashbot .
+WORKDIR /BashBot
+COPY . .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && chown -R bashbot:bashbot /BashBot
 
 USER bashbot
 CMD [ "python", "./bashbot.py" ]

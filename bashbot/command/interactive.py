@@ -10,13 +10,13 @@ from bashbot.terminal.sessions import sessions
 
 class InteractiveCommand(commands.Cog):
     @commands.hybrid_command(
-        name='interact',
-        aliases=['.interact', '.i'],
+        name='interactive',
+        aliases=['.interactive', '.interact', '.i'],
         description='Toggles interactive mode where all messages are sent to terminal'
     )
     @session_exists()
     async def interactive(self, ctx: Context):
-        terminal = sessions().by_channel(ctx.message.channel)
+        terminal = sessions().by_channel(ctx.channel)
 
         if not terminal:
             raise SessionDontExistException()

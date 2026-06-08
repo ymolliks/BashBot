@@ -24,7 +24,7 @@ def launch():
     settings().load_macros()
     state().load()
 
-    prefix = settings().get('commands.prefixes', ['$'])[0]
+    prefixes = settings().get('commands.prefixes', ['$'])
     token = settings().get('discord.token')
 
     if token == 'TOKEN_HERE':
@@ -33,8 +33,8 @@ def launch():
 
     try:
         intents = Intents.default()
-        intents.message_content = True
-        BashBot(prefix, intents=intents).run(token)
+        intents.message_content = settings().get('discord.message_content_intent')
+        BashBot(prefixes, intents=intents).run(token)
     except LoginFailure as e:
         logger.error(e.args[0])
 

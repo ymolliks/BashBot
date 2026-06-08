@@ -18,6 +18,10 @@ class TerminalState(Enum):
     BROKEN = 3
 
 
+class TerminalStartupError(Exception):
+    pass
+
+
 INIT_ENVS = {
     'TERM': 'linux'
 }
@@ -44,16 +48,18 @@ class Terminal:
         self.stream = pyte.ByteStream(self.screen)
 
         self.fd = None
+        self.pid = None
         self.content = None
 
         self.refresh_timer = None
         self.event_loop = None
 
     def open(self):
-        pid, self.fd = os.forkpty()
-        self.event_loop = asyncio.get_event_loop()
+        self.__validate_startup()
+        self.pid, self.fd = os.forkpty()
+        self.event_loop = asyncio.get_running_loop()
 
-        if pid == 0:
+        if self.pid == 0:
             if self.login:
                 os.execve(self.su_path, [self.su_path, "-", self.login, "-s", self.sh_path], INIT_ENVS)
             else:
@@ -63,23 +69,47 @@ class Terminal:
         else:
             self.state = TerminalState.OPEN
 
-            pty_watcher = threading.Thread(target=self.__monitor_pty)
+            pty_watcher = threading.Thread(target=self.__monitor_pty, daemon=True)
             pty_watcher.start()
+
+    def __validate_startup(self):
+        if not hasattr(os, 'forkpty'):
+            raise TerminalStartupError(
+                'Interactive terminal sessions require a Unix-like host with forkpty support. '
+                'Run BashBot inside Linux, WSL, or Docker.'
+            )
+
+        if not os.path.exists(self.sh_path):
+            raise TerminalStartupError(f'Shell path does not exist: {self.sh_path}')
+
+        if self.login and not os.path.exists(self.su_path):
+            raise TerminalStartupError(f'su path does not exist: {self.su_path}')
 
     def close(self):
         self.state = TerminalState.CLOSED
         self.refresh()
-        os.close(self.fd)
+        try:
+            os.close(self.fd)
+        except OSError:
+            pass
+
+        if self.pid:
+            try:
+                os.waitpid(self.pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
 
     def refresh(self):
         if self.refresh_timer and self.refresh_timer.is_alive():
             return
 
         interval = settings().get('terminal.max_refresh_frequency')
-        self.refresh_timer = threading.Timer(interval, lambda: {
-            execute_async(self.event_loop, self.on_change(self, self.content))
-        })
+        self.refresh_timer = threading.Timer(interval, self.__notify_change)
         self.refresh_timer.start()
+
+    def __notify_change(self):
+        if self.event_loop and self.on_change:
+            execute_async(self.event_loop, self.on_change(self, self.content))
 
     def send_input(self, data: str):
         if self.state != TerminalState.OPEN:
@@ -96,7 +126,7 @@ class Terminal:
         self.controls[emoji] = TerminalControl(emoji, content)
 
     def remove_control(self, emoji):
-        self.controls.pop(emoji)
+        self.controls.pop(emoji, None)
 
     def search_control(self, phrase):
         return [label for label in self.controls.keys() if label.startswith(phrase)]
@@ -111,7 +141,7 @@ class Terminal:
                 self.stream.feed(output)
                 self.content = '\n'.join(self.screen.display)
 
-                if self.on_change:
+                if self.on_change and self.state == TerminalState.OPEN:
                     self.refresh()
 
                 output = os.read(self.fd, 1024)

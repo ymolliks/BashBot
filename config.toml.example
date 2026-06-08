@@ -7,6 +7,7 @@ presence = "{prefix}.help"
 disable_dm = true
 enable_users_whitelist = true
 users_whitelist = []
+message_content_intent = true
 
 [terminal]
 template = "`| TTY #{name} | {state} |`\n```{content}```"
@@ -18,6 +19,7 @@ delete_messages = true
 submit_by_default = true
 interactive_by_default = false
 max_refresh_frequency = 0.5
+exec_timeout = 30
 
 [other]
 check_for_updates = true

@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+__pycache__
+*.pyc
+venv
+
+config.toml
+bashbot.log
+state.json
+build.json
+BashBot.zip
+dist
+tests/generated_config.toml

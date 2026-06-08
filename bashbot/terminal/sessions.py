@@ -1,11 +1,13 @@
-from typing import List
-
-from discord import TextChannel, Message
+from typing import List, TYPE_CHECKING
 
 from bashbot.core.factory import SingletonDecorator
 from bashbot.core.settings import settings
-from bashbot.terminal.terminal import Terminal
 from bashbot.core.utils import parse_template, block_escape
+
+if TYPE_CHECKING:
+    from discord import Message, TextChannel
+
+    from bashbot.terminal.terminal import Terminal
 
 
 class Sessions:
@@ -13,49 +15,66 @@ class Sessions:
         self.sessions = {}
         self.selected = {}
 
-    def add(self, message: Message, terminal: Terminal):
-        self.sessions[message] = terminal
+    @staticmethod
+    def _message_key(message):
+        return getattr(message, 'id', id(message))
+
+    @staticmethod
+    def _channel_key(channel):
+        return getattr(channel, 'id', id(channel))
+
+    def add(self, message: 'Message', terminal: 'Terminal'):
+        self.sessions[self._message_key(message)] = (message, terminal)
         self.select(message.channel, terminal)
 
-    def select(self, channel: TextChannel, terminal: Terminal):
-        self.selected[channel] = terminal
+    def select(self, channel: 'TextChannel', terminal: 'Terminal'):
+        self.selected[self._channel_key(channel)] = terminal
 
-    def by_channel(self, channel: TextChannel) -> Terminal:
-        if channel in self.selected:
-            return self.selected[channel]
+    def by_channel(self, channel: 'TextChannel') -> 'Terminal':
+        return self.selected.get(self._channel_key(channel))
 
-    def by_message(self, searched_message: Message) -> Terminal:
-        for message, terminal in self.sessions.items():
-            if searched_message.id == message.id:
-                return terminal
+    def by_message(self, searched_message: 'Message') -> 'Terminal':
+        binding = self.sessions.get(self._message_key(searched_message))
+        if binding:
+            return binding[1]
 
-    def search(self, phrase: str) -> List[Terminal]:
-        return [terminal for terminal in self.sessions.values() if terminal.name.startswith(phrase)]
+    def search(self, phrase: str) -> List['Terminal']:
+        return [
+            terminal
+            for _, terminal in self.sessions.values()
+            if terminal.name.startswith(phrase)
+        ]
 
-    def by_name(self, name: str) -> Terminal:
-        for message, terminal in self.sessions.items():
+    def by_name(self, name: str) -> 'Terminal':
+        for _, terminal in self.sessions.values():
             if terminal.name == name:
                 return terminal
 
-    def remove(self, terminal: Terminal):
-        for k in self.sessions.copy():
-            if self.sessions[k] == terminal:
-                del self.sessions[k]
+    def remove(self, terminal: 'Terminal'):
+        for message_id, (_, stored_terminal) in self.sessions.copy().items():
+            if stored_terminal == terminal:
+                del self.sessions[message_id]
 
-        message: Message = self.find_message(terminal)
-        if message and message.channel in self.selected:
-            self.selected.pop(message.channel)
+        for channel_id, selected_terminal in self.selected.copy().items():
+            if selected_terminal == terminal:
+                del self.selected[channel_id]
 
-    def find_message(self, terminal: Terminal):
-        inv_map = {v: k for k, v in self.sessions.items()}
-        return inv_map.get(terminal)
+    def find_message(self, terminal: 'Terminal'):
+        for message, stored_terminal in self.sessions.values():
+            if stored_terminal == terminal:
+                return message
 
-    def update_message_reference(self, terminal: Terminal, message: Message):
-        del self.sessions[self.find_message(terminal)]
-        self.sessions[message] = terminal
+    def update_message_reference(self, terminal: 'Terminal', message: 'Message'):
+        old_message = self.find_message(terminal)
+        if old_message:
+            del self.sessions[self._message_key(old_message)]
 
-    async def update_message(self, terminal: Terminal, content: str):
+        self.sessions[self._message_key(message)] = (message, terminal)
+
+    async def update_message(self, terminal: 'Terminal', content: str):
         message = self.find_message(terminal)
+        if not message:
+            return
 
         content = parse_template(
             settings().get('terminal.template'),

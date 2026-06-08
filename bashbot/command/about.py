@@ -14,6 +14,9 @@ class AboutCommand(commands.Cog):
         description='Shows information about project'
     )
     async def about(self, ctx: Context):
+        if ctx.interaction and settings().get('other.check_for_updates'):
+            await ctx.defer()
+
         embed = Embed(title='About BashBot', description='BashBot is a Discord bot that allows terminal access via chat.', color=EMBED_COLOR)
         embed.add_field(name='Source code', value=REPOSITORY_URL, inline=False)
         embed.add_field(name='Author', value='[Adikso](https://github.com/Adikso)', inline=False)
@@ -21,7 +24,7 @@ class AboutCommand(commands.Cog):
         embed.set_thumbnail(url=THUMBNAIL_URL)
 
         if settings().get('other.check_for_updates'):
-            releases = updater().check_for_updates()
+            releases = await updater().check_for_updates_async()
             if releases is None:
                 embed.add_field(name='Failed to fetch updates information', value='Try again later', inline=False)
             elif releases:

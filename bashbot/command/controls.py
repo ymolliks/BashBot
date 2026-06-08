@@ -12,11 +12,27 @@ from bashbot.terminal.terminal import Terminal
 
 async def controls_callback(interaction: Interaction):
     label = interaction.data['custom_id']
-    if label.startswith('control_'):
-        label = label[len('control_'):]
-        terminal = sessions().by_message(interaction.message)
-        control: TerminalControl = terminal.controls[label]
-        terminal.send_input(control.text)
+    if not label.startswith('control_'):
+        await interaction.response.defer()
+        return
+
+    bot = interaction.client
+    if hasattr(bot, 'check_interaction_permissions'):
+        if not await bot.check_interaction_permissions(interaction):
+            return
+
+    label = label[len('control_'):]
+    terminal = sessions().by_message(interaction.message)
+    if not terminal:
+        await interaction.response.send_message(content='This terminal is unavailable', ephemeral=True)
+        return
+
+    control: TerminalControl = terminal.controls.get(label)
+    if not control:
+        await interaction.response.send_message(content='This control is unavailable', ephemeral=True)
+        return
+
+    terminal.send_input(control.text)
 
     await interaction.response.defer()
 
@@ -34,7 +50,7 @@ class ControlsCommand(commands.Cog):
 
     @controls.command()
     @session_exists()
-    async def add(self, ctx: Context, label, content):
+    async def add(self, ctx: Context, label, *, content):
         terminal: Terminal = sessions().by_channel(ctx.channel)
         message: Message = sessions().find_message(terminal)
 
@@ -52,7 +68,7 @@ class ControlsCommand(commands.Cog):
 
         if ctx.interaction:
             embed = Embed(description=f"Control added", color=0x00ff00)
-            await ctx.reply(embed=embed, ephemeral=False, delete_after=0)
+            await ctx.reply(embed=embed, ephemeral=False)
 
     @controls.command()
     @session_exists()
@@ -60,28 +76,31 @@ class ControlsCommand(commands.Cog):
         terminal: Terminal = sessions().by_channel(ctx.channel)
         message: Message = sessions().find_message(terminal)
 
-        terminal.remove_control(label)
         view = View.from_message(message)
 
         for component in view.children:
-            if component.custom_id == label:
+            if component.custom_id == f'control_{label}':
                 view.remove_item(component)
                 break
         else:
             await ctx.reply(content="Couldn't find specified control")
             return
 
+        terminal.remove_control(label)
         new_message = await message.edit(view=view)
         sessions().update_message_reference(terminal, new_message)
 
         if ctx.interaction:
             embed = Embed(description=f"Control removed", color=0xff0000)
-            await ctx.reply(embed=embed, ephemeral=False, delete_after=0)
+            await ctx.reply(embed=embed, ephemeral=False)
 
     @remove.autocomplete('label')
     async def remove_autocomplete(self, interaction: Interaction, current: str):
         terminal: Terminal = sessions().by_channel(interaction.channel)
-        results = terminal.search_control(current)
+        if not terminal:
+            return []
+
+        results = terminal.search_control(current)[:25]
         return [
             app_commands.Choice(name=option, value=option)
             for option in results

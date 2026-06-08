@@ -16,7 +16,8 @@ class State(dict):
                 self.update(json.load(source))
         else:
             self.update({
-                'last_run_version': Updater.get_local_commit()
+                'last_run_version': Updater.get_local_commit(),
+                'last_command_sync_version': None
             })
             self.save()
 

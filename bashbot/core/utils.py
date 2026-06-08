@@ -3,9 +3,14 @@ import logging
 
 from bashbot.core.settings import settings
 
+DISCORD_MESSAGE_LIMIT = 2000
+
 
 def get_logger(name):
     logger = logging.getLogger(name)
+
+    if any(isinstance(handler, logging.FileHandler) for handler in logger.handlers):
+        return logger
 
     handler = logging.FileHandler('bashbot.log')
     formatter = logging.Formatter('[%(asctime)s] %(levelname)s:%(name)s: %(message)s')
@@ -27,7 +32,27 @@ def execute_async(loop, coroutine):
 
 
 def block_escape(text):
-    return text.replace('```', '`‎`‎`')
+    if text is None:
+        return ''
+
+    zero_width_mark = '\u200e'
+    return str(text).replace('```', f'`{zero_width_mark}`{zero_width_mark}`')
+
+
+def code_block(content, language='', limit=DISCORD_MESSAGE_LIMIT):
+    content = block_escape(content)
+    language = language or ''
+    wrapper_size = len(f'```{language}\n\n```')
+    max_content_length = max(limit - wrapper_size, 0)
+
+    if len(content) > max_content_length:
+        suffix = '\n... output truncated ...'
+        if len(suffix) >= max_content_length:
+            content = suffix[:max_content_length]
+        else:
+            content = content[:max_content_length - len(suffix)] + suffix
+
+    return f'```{language}\n{content}\n```'
 
 
 def extract_prefix(content):

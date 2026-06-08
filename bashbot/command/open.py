@@ -5,7 +5,7 @@ from bashbot.core.exceptions import ArgumentFormatException
 from bashbot.core.macros import execute_macro
 from bashbot.core.settings import settings
 from bashbot.terminal.sessions import sessions
-from bashbot.terminal.terminal import Terminal
+from bashbot.terminal.terminal import Terminal, TerminalStartupError
 from bashbot.core.utils import parse_template
 
 
@@ -46,7 +46,19 @@ class OpenCommand(commands.Cog):
             terminal = Terminal(name, sh_path=sh_path, on_change=sessions().update_message)
 
         sessions().add(message, terminal)
-        terminal.open()
+        try:
+            terminal.open()
+        except TerminalStartupError as error:
+            sessions().remove(terminal)
+            content = parse_template(
+                settings().get('terminal.template'),
+                name=name,
+                state='BROKEN',
+                content=str(error)
+            )
+            await message.edit(content=content)
+            await ctx.send(f'`{error}`')
+            return
 
         # Run macro on terminal startup
         startup_macro = settings().get('terminal.startup_macro')

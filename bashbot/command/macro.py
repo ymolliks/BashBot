@@ -23,7 +23,7 @@ class MacroCommand(commands.Cog):
 
     @macro.autocomplete('macro_name')
     async def macro_autocomplete(self, interaction: Interaction, current: str):
-        results = search_macro(current)
+        results = search_macro(current)[:25]
         return [
             app_commands.Choice(name=option, value=option)
             for option in results

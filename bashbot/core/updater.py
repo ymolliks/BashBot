@@ -1,5 +1,6 @@
 import json
 import time
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -19,22 +20,33 @@ class Updater:
         if self.last_check and current_time - self.last_check < TIME_BETWEEN_UPDATE_CHECKS:
             return self.cached_updates
 
+        self.last_check = current_time
         latest_release = self.get_latest_release()
         if latest_release is None:
             return None
 
         local_commit_sha = self.get_local_commit()
+        if not local_commit_sha:
+            return []
+
         if latest_release['target_commitish'] != local_commit_sha:
             releases = self.get_new_releases(local_commit_sha)
             self.cached_updates = releases
             return releases
 
+        self.cached_updates = []
         return []
+
+    async def check_for_updates_async(self):
+        return await asyncio.to_thread(self.check_for_updates)
 
     @staticmethod
     def get_latest_release():
         api_url = f'https://api.github.com/repos/{REPOSITORY_AUTHOR}/{REPOSITORY_NAME}/releases/latest'
-        r = requests.get(api_url)
+        try:
+            r = requests.get(api_url, timeout=10)
+        except requests.RequestException:
+            return None
 
         if r.status_code != 200:
             return None
@@ -44,7 +56,10 @@ class Updater:
     @staticmethod
     def get_commit(commit_sha):
         api_url = f'https://api.github.com/repos/{REPOSITORY_AUTHOR}/{REPOSITORY_NAME}/commits/{commit_sha}'
-        r = requests.get(api_url, headers={'X-GitHub-Api-Version': '2022-11-28'})
+        try:
+            r = requests.get(api_url, headers={'X-GitHub-Api-Version': '2022-11-28'}, timeout=10)
+        except requests.RequestException:
+            return None
 
         if r.status_code != 200:
             return None
@@ -54,7 +69,10 @@ class Updater:
     @staticmethod
     def get_new_releases(local_version):
         api_url = f'https://api.github.com/repos/{REPOSITORY_AUTHOR}/{REPOSITORY_NAME}/releases'
-        r = requests.get(api_url, headers={'X-GitHub-Api-Version': '2022-11-28'})
+        try:
+            r = requests.get(api_url, headers={'X-GitHub-Api-Version': '2022-11-28'}, timeout=10)
+        except requests.RequestException:
+            return None
 
         if r.status_code != 200:
             return None
@@ -70,6 +88,9 @@ class Updater:
             # Find updates if current local commit is not a part of a release
             releases = []
             commit = Updater.get_commit(local_version)
+            if commit is None:
+                return None
+
             commit_date = datetime.fromisoformat(commit['commit']['committer']['date'].replace('Z', '+00:00'))
             for release in data:
                 release_date = datetime.fromisoformat(release['published_at'].replace('Z', '+00:00'))

@@ -18,7 +18,8 @@ BashBot is a Discord bot that provides terminal access via chat.
 These instructions will get you a bot installed and running quickly
 
 ### Prerequisites
-* Python 3.5+
+* Python 3.10+
+* Linux, WSL, or Docker for interactive terminal sessions
 * `pyte` library (installation instructions below)
 * `discord.py` library (installation instructions below)
 
@@ -34,13 +35,18 @@ Type following commands to install dependencies:
 pip install -r requirements.txt
 ```
 
+To run the test suite:
+```
+python -m unittest discover -s tests
+```
+
 ### Running
-In order to run bot you have to obtain a bot account. It can be obtained through the [applications page](https://discordapp.com/developers/applications/me#top). 
+In order to run bot you have to obtain a bot account. It can be obtained through the [applications page](https://discord.com/developers/applications).
 Later you have to transform your app into app bot user
 
 ![Create a Bot User](https://i.imgur.com/98eUWrP.png)
 
-then enable "Message Content Intent"
+then enable "Message Content Intent" if you want to use prefix commands or send terminal input directly through chat messages. Slash commands and buttons continue to work without reading arbitrary message content.
 
 <img width="483" alt="2022-09-08_03-38" src="https://user-images.githubusercontent.com/1407751/189014783-7b84e5dc-bce2-4a69-8ed1-62e1638191bb.png">
 
@@ -76,7 +82,7 @@ Now BashBot should start and show later instructions
 
 **Commands are now available as app commands**, but you can still use the old way:
 
-(Every command have to start with prefix. By default it's "$". You can change it in settings. More information about commands after typing "$.help")
+Every legacy command has to start with a configured prefix. By default it's "$". You can change it in settings. More information about commands after typing "$.help" or using `/help`.
 
 Command | Alias | Usage | Description 
 ------------ | ------------- | ------------- | ------------- 

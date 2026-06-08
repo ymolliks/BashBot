@@ -15,7 +15,7 @@ class RepeatCommand(commands.Cog):
         usage='<string..>'
     )
     async def repeat(self, ctx: Context, n: int, *, text):
-        terminal = sessions().by_channel(ctx.message.channel)
+        terminal = sessions().by_channel(ctx.channel)
         if not terminal:
             raise SessionDontExistException()
 
@@ -23,4 +23,4 @@ class RepeatCommand(commands.Cog):
 
         if ctx.interaction:
             embed = Embed(description=f"Text sent", color=EMBED_COLOR)
-            await ctx.reply(embed=embed, ephemeral=False, delete_after=0)
+            await ctx.reply(embed=embed, ephemeral=False)

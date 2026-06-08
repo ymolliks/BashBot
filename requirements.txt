@@ -1,4 +1,4 @@
-toml~=0.10.1
-pyte~=0.8.0
-discord.py==2.3.2
-requests
+toml~=0.10.2
+pyte~=0.8.2
+discord.py~=2.7.1
+requests~=2.34.2

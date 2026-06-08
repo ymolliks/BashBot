@@ -11,11 +11,11 @@ class WhitelistCommand(commands.Cog):
         description='Manages users whitelist',
         usage='add/remove <user_tag>'
     )
-    async def controls(self, ctx):
+    async def whitelist(self, ctx):
         if ctx.invoked_subcommand is None:
             pass
 
-    @controls.command()
+    @whitelist.command()
     async def add(self, ctx, user: User):
         whitelist = settings().config['discord']['users_whitelist']
         if user.id not in whitelist:
@@ -28,7 +28,7 @@ class WhitelistCommand(commands.Cog):
             embed = Embed(description=f"User {user.mention} is already on the whitelist", color=0xff0000)
             await ctx.send(embed=embed)
 
-    @controls.command()
+    @whitelist.command()
     async def remove(self, ctx, user: User):
         whitelist = settings().config['discord']['users_whitelist']
         if user.id in whitelist:
