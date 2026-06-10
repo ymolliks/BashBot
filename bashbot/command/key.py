@@ -15,7 +15,7 @@ class EnterCommand(commands.Cog):
         terminal = sessions().by_channel(ctx.channel)
         if not terminal:
             raise SessionDontExistException()
-        terminal.send_input('\n')
+        terminal.send_input('\r')
         embed = Embed(description=f"Sent Enter to terminal #{terminal.name}", color=EMBED_COLOR)
         await ctx.send(embed=embed)
 

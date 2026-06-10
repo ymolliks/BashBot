@@ -210,7 +210,7 @@ class BashBot(Bot):
                 content = remove_prefix(content)
 
             if terminal.auto_submit:
-                content += '\n'
+                content += '\r'
 
             terminal.send_input(content)
 
