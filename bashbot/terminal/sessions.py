@@ -118,16 +118,13 @@ class Sessions:
         if available <= 0:
             return static_rendered[:limit]
 
-        marker = '... output truncated ...\n'
-        if len(marker) >= available:
-            clipped_content = marker[:available]
-        else:
-            clipped_content = marker + escaped_content[-(available - len(marker)):]
+        marker = '\n... output truncated ...'
+        clipped_content = escaped_content[:available - len(marker)] + marker
 
         rendered = render(clipped_content)
         while len(rendered) > limit and len(clipped_content) > len(marker):
             overage = len(rendered) - limit
-            clipped_content = marker + clipped_content[len(marker) + overage:]
+            clipped_content = clipped_content[:len(clipped_content) - overage - len(marker)] + marker
             rendered = render(clipped_content)
 
         return rendered[:limit]

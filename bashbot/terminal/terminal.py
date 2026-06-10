@@ -268,7 +268,7 @@ class Terminal:
                     return
 
                 self.stream.feed(output)
-                self.content = '\n'.join(self.screen.display)
+                self.content = '\n'.join(line.rstrip() for line in self.screen.display).rstrip('\n')
 
                 if self.on_change and self.state == TerminalState.OPEN:
                     self.refresh()
