@@ -20,6 +20,7 @@ submit_by_default = true
 interactive_by_default = false
 max_refresh_frequency = 0.5
 exec_timeout = 30
+auto_repost = true
 
 [other]
 check_for_updates = true

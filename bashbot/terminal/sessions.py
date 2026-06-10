@@ -144,6 +144,25 @@ class Sessions:
         except Exception:
             self.logger.exception('Failed to update terminal message')
 
+    async def repost(self, terminal: 'Terminal'):
+        old_message = self.find_message(terminal)
+        if not old_message:
+            return
+
+        try:
+            content = self.render_message(terminal, terminal.content)
+            new_message = await old_message.channel.send(content=content)
+        except Exception:
+            self.logger.exception('Failed to repost terminal message')
+            return
+
+        self.remove(terminal)
+        self.add(new_message, terminal)
+        try:
+            await old_message.delete()
+        except Exception:
+            pass
+
     async def finish_terminal(self, terminal: 'Terminal', content: str):
         await self.update_message(terminal, content)
         self.remove(terminal)

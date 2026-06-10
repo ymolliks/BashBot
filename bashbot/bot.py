@@ -19,6 +19,7 @@ from bashbot.command.macro import MacroCommand
 from bashbot.command.open import OpenCommand
 from bashbot.command.rename import RenameCommand
 from bashbot.command.repeat import RepeatCommand
+from bashbot.command.repost import RepostCommand
 from bashbot.command.select import SelectCommand
 from bashbot.command.session import KillCommand, RestartCommand, SessionsCommand
 from bashbot.command.submit import SubmitCommand
@@ -59,6 +60,7 @@ class BashBot(Bot):
         await self.add_cog(CtrlCommand())
         await self.add_cog(UploadCommand())
         await self.add_cog(RepeatCommand())
+        await self.add_cog(RepostCommand())
         await self.add_cog(MacroCommand())
         await self.add_cog(SelectCommand())
         await self.add_cog(SessionsCommand())
@@ -222,6 +224,9 @@ class BashBot(Bot):
             should_delete_interactive = settings().get('terminal.interactive.delete_messages')
             if should_delete_any or (should_delete_interactive and terminal.interactive):
                 await message.delete()
+
+            if settings().get('terminal.auto_repost'):
+                await sessions().repost(terminal)
 
     async def on_interaction(self, interaction: Interaction):
         if interaction.type != InteractionType.component or not interaction.message:

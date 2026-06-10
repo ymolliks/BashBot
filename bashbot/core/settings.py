@@ -105,6 +105,7 @@ class Settings:
         self.add_default('terminal.interactive_by_default', False)
         self.add_default('terminal.max_refresh_frequency', 0.5)
         self.add_default('terminal.exec_timeout', 30)
+        self.add_default('terminal.auto_repost', True)
 
         # [terminal.interactive]
         self.add_default('terminal.interactive.delete_messages', True)
