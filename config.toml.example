@@ -21,6 +21,9 @@ interactive_by_default = false
 max_refresh_frequency = 0.5
 exec_timeout = 30
 auto_repost = true
+cols = 120
+rows = 40
+term = "xterm-256color"
 
 [other]
 check_for_updates = true

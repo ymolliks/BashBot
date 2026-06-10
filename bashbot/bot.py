@@ -226,7 +226,7 @@ class BashBot(Bot):
                 await message.delete()
 
             if settings().get('terminal.auto_repost'):
-                await sessions().repost(terminal)
+                terminal._repost_requested = True
 
     async def on_interaction(self, interaction: Interaction):
         if interaction.type != InteractionType.component or not interaction.message:

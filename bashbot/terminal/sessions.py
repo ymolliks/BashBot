@@ -144,6 +144,10 @@ class Sessions:
         except Exception:
             self.logger.exception('Failed to update terminal message')
 
+        if getattr(terminal, '_repost_requested', False):
+            terminal._repost_requested = False
+            await self.repost(terminal)
+
     async def repost(self, terminal: 'Terminal'):
         old_message = self.find_message(terminal)
         if not old_message:

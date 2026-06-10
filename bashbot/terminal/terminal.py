@@ -10,7 +10,7 @@ import pyte
 from enum import Enum
 
 from bashbot.core.settings import settings
-from bashbot.core.utils import execute_async
+from bashbot.core.utils import execute_async, get_logger
 from bashbot.terminal.control import TerminalControl
 from bashbot.terminal.shortcuts import replace_shortcuts
 
@@ -47,7 +47,9 @@ class Terminal:
         self.auto_submit = settings().get('terminal.submit_by_default')
 
         self.state: TerminalState = TerminalState.CLOSED
-        self.screen = pyte.Screen(80, 24)
+        cols = settings().get('terminal.cols', 120)
+        rows = settings().get('terminal.rows', 40)
+        self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.ByteStream(self.screen)
 
         self.fd = None
@@ -59,6 +61,7 @@ class Terminal:
         self._closing = False
         self._exited = False
         self._pty_generation = 0
+        self._repost_requested = False
 
     def open(self, loop=None):
         self.__validate_startup()
@@ -71,7 +74,7 @@ class Terminal:
 
         if self.pid == 0:
             env = os.environ.copy()
-            env['TERM'] = 'linux'
+            env['TERM'] = settings().get('terminal.term', 'xterm-256color')
             if self.login:
                 os.execve(self.su_path, [self.su_path, "-", self.login, "-s", self.sh_path], env)
             else:
@@ -115,7 +118,9 @@ class Terminal:
         self.close(force=True)
 
     def __reset_screen(self):
-        self.screen = pyte.Screen(80, 24)
+        cols = settings().get('terminal.cols', 120)
+        rows = settings().get('terminal.rows', 40)
+        self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.ByteStream(self.screen)
         self.content = None
 
@@ -210,13 +215,14 @@ class Terminal:
 
     def refresh(self):
         if self.refresh_timer and self.refresh_timer.is_alive():
-            return
+            self.refresh_timer.cancel()
 
         interval = settings().get('terminal.max_refresh_frequency')
         self.refresh_timer = threading.Timer(interval, self.__notify_change)
         self.refresh_timer.start()
 
     def __notify_change(self):
+        self.refresh_timer = None
         if self.event_loop and self.on_change:
             execute_async(self.event_loop, self.on_change(self, self.content))
 

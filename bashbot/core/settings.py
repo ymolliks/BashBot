@@ -106,6 +106,9 @@ class Settings:
         self.add_default('terminal.max_refresh_frequency', 0.5)
         self.add_default('terminal.exec_timeout', 30)
         self.add_default('terminal.auto_repost', True)
+        self.add_default('terminal.cols', 120)
+        self.add_default('terminal.rows', 40)
+        self.add_default('terminal.term', 'xterm-256color')
 
         # [terminal.interactive]
         self.add_default('terminal.interactive.delete_messages', True)
