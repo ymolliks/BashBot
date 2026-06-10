@@ -198,7 +198,7 @@ class BashBot(Bot):
             await self.process_commands(message)
         elif terminal and terminal.state == TerminalState.OPEN:
             prefix = extract_prefix(message.content)
-            if not terminal.interactive and not prefix:
+            if not terminal.interactive and not prefix and not terminal.auto_submit:
                 return
 
             if not await self.check_message_permissions(message):
@@ -206,7 +206,7 @@ class BashBot(Bot):
 
             # We don't remove prefix when in interactive mode.
             content = message.content
-            if not terminal.interactive:
+            if not terminal.interactive and prefix:
                 content = remove_prefix(content)
 
             if terminal.auto_submit:
